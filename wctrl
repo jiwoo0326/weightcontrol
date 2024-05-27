@@ -1,0 +1,236 @@
+#!/usr/bin/env python3
+import argparse
+import json
+import os
+
+DATA_FILE = 'data.json'
+
+class UserProfile:
+    def __init__(self, age, gender, height, weight, activity_level, goal_weight):
+        self.age = age
+        self.gender = gender
+        self.height = height
+        self.weight = weight
+        self.activity_level = activity_level
+        self.goal_weight = goal_weight
+        self.daily_calories = self.calculate_daily_calories()
+
+    def calculate_daily_calories(self):
+        if self.gender == 'male':
+            bmr = 10 * self.weight + 6.25 * self.height - 5 * self.age + 5
+        else:
+            bmr = 10 * self.weight + 6.25 * self.height - 5 * self.age - 161
+        
+        activity_multiplier = {
+            'sedentary': 1.2,
+            'lightly active': 1.375,
+            'moderately active': 1.55,
+            'very active': 1.725,
+            'extra active': 1.9
+        }
+        
+        return bmr * activity_multiplier.get(self.activity_level, 1.2)
+
+class FoodLog:
+    def __init__(self):
+        self.entries = []
+
+    def add_food(self, name, calories, carbs, fats, proteins):
+        self.entries.append({
+            'name': name,
+            'calories': calories,
+            'carbs': carbs,
+            'fats': fats,
+            'proteins': proteins
+        })
+
+    def get_total_nutrients(self):
+        total_calories = sum(entry['calories'] for entry in self.entries)
+        total_carbs = sum(entry['carbs'] for entry in self.entries)
+        total_fats = sum(entry['fats'] for entry in self.entries)
+        total_proteins = sum(entry['proteins'] for entry in self.entries)
+        return total_calories, total_carbs, total_fats, total_proteins
+
+    def to_dict(self):
+        return self.entries
+
+    def from_dict(self, data):
+        self.entries = data
+
+class ExerciseLog:
+    def __init__(self):
+        self.entries = []
+
+    def add_exercise(self, name, calories_burned):
+        self.entries.append({
+            'name': name,
+            'calories_burned': calories_burned
+        })
+
+    def get_total_calories_burned(self):
+        return sum(entry['calories_burned'] for entry in self.entries)
+
+    def to_dict(self):
+        return self.entries
+
+    def from_dict(self, data):
+        self.entries = data
+
+class WeeklyExerciseGoal:
+    def __init__(self, goal_calories):
+        self.goal_calories = goal_calories
+        self.current_calories_burned = 0
+
+    def update_calories_burned(self, calories):
+        self.current_calories_burned += calories
+    
+    def get_progress(self):
+        return self.current_calories_burned, self.goal_calories
+
+    def check_goal_achieved(self):
+        return self.current_calories_burned >= self.goal_calories
+
+    def to_dict(self):
+        return {
+            'goal_calories': self.goal_calories,
+            'current_calories_burned': self.current_calories_burned
+        }
+
+    def from_dict(self, data):
+        self.goal_calories = data['goal_calories']
+        self.current_calories_burned = data['current_calories_burned']
+
+class ProgressTracker:
+    def __init__(self):
+        self.weights = []
+        self.body_fat_percentages = []
+
+    def log_progress(self, weight, body_fat_percentage):
+        self.weights.append(weight)
+        self.body_fat_percentages.append(body_fat_percentage)
+
+    def get_progress(self):
+        return self.weights, self.body_fat_percentages
+
+    def to_dict(self):
+        return {
+            'weights': self.weights,
+            'body_fat_percentages': self.body_fat_percentages
+        }
+
+    def from_dict(self, data):
+        self.weights = data['weights']
+        self.body_fat_percentages = data['body_fat_percentages']
+
+class BodyManagementProgram:
+    def __init__(self, user_profile, weekly_exercise_goal):
+        self.user_profile = user_profile
+        self.food_log = FoodLog()
+        self.exercise_log = ExerciseLog()
+        self.progress_tracker = ProgressTracker()
+        self.weekly_exercise_goal = weekly_exercise_goal
+
+    def add_food_entry(self, name, calories, carbs, fats, proteins):
+        self.food_log.add_food(name, calories, carbs, fats, proteins)
+
+    def add_exercise_entry(self, name, calories_burned):
+        self.exercise_log.add_exercise(name, calories_burned)
+        self.weekly_exercise_goal.update_calories_burned(calories_burned)
+
+    def daily_summary(self):
+        total_calories, total_carbs, total_fats, total_proteins = self.food_log.get_total_nutrients()
+        calories_burned = self.exercise_log.get_total_calories_burned()
+        net_calories = total_calories - calories_burned
+
+        print(f"Total Calories Consumed: {total_calories}")
+        print(f"Total Carbohydrates: {total_carbs}g")
+        print(f"Total Fats: {total_fats}g")
+        print(f"Total Proteins: {total_proteins}g")
+        print(f"Total Calories Burned: {calories_burned}")
+        print(f"Net Calories: {net_calories}")
+
+    def weekly_summary(self):
+        progress, goal = self.weekly_exercise_goal.get_progress()
+        goal_achieved = self.weekly_exercise_goal.check_goal_achieved()
+        diff = progress-goal
+        print(f"Weekly Exercise Goal: {goal} calories")
+        print(f"Current Calories Burned: {progress} calories")
+        print(f"Goal Achieved: {'Yes' if goal_achieved else 'No'}")
+        if diff<0:
+            print("diff: ",diff)
+        else:
+            print("diff: +", diff)
+
+    def save_data(self, filename=DATA_FILE):
+        data = {
+            'food_log': self.food_log.to_dict(),
+            'exercise_log': self.exercise_log.to_dict(),
+            'weekly_exercise_goal': self.weekly_exercise_goal.to_dict(),
+            'progress_tracker': self.progress_tracker.to_dict()
+        }
+        with open(filename, 'w') as f:
+            json.dump(data, f)
+
+    def load_data(self, filename=DATA_FILE):
+        if os.path.exists(filename):
+            with open(filename, 'r') as f:
+                data = json.load(f)
+                self.food_log.from_dict(data['food_log'])
+                self.exercise_log.from_dict(data['exercise_log'])
+                self.weekly_exercise_goal.from_dict(data['weekly_exercise_goal'])
+                self.progress_tracker.from_dict(data['progress_tracker'])
+def main():
+    parser = argparse.ArgumentParser(description="Body Management Program")
+    parser.add_argument('-f', '--food', action='store_true', help='Add a food entry with name, calories, carbs, fats, and proteins')
+    parser.add_argument('-e', '--exercise', action='store_true', help='Add an exercise entry with name and calories burned')
+    parser.add_argument('-s', '--summary', choices=['daily', 'weekly'], help='Show daily or weekly summary')
+    parser.add_argument('-r', '--reset', action='store_true', help='Reset all data')
+    parser.add_argument('-c', '--change', action='store_true', help='Change calories burning goal')
+    
+    args = parser.parse_args()
+
+    program = BodyManagementProgram(UserProfile(age=30, gender='female', height=165, weight=68, activity_level='moderately active', goal_weight=60), WeeklyExerciseGoal(goal_calories=3000))
+
+    if args.reset:
+        reset_data()
+        print("All data has been reset.")
+        return
+
+    program.load_data()
+
+    if args.food:
+        print("Enter food details:")
+        name = input("Name: ")
+        calories = float(input("Calories: "))
+        carbs = float(input("Carbs: "))
+        fats = float(input("Fats: "))
+        proteins = float(input("Proteins: "))
+        program.add_food_entry(name, calories, carbs, fats, proteins)
+        program.save_data()
+        program.daily_summary()
+
+    if args.exercise:
+        name = input("Name: ")
+        calories_burned = float(input("Burned Calories: "))
+        program.add_exercise_entry(name, calories_burned)
+        program.save_data()
+        program.weekly_summary()
+
+    if args.summary:
+        if args.summary == 'daily':
+            program.daily_summary()
+        elif args.summary == 'weekly':
+            program.weekly_summary()
+
+    if args.change:
+        new_goal=float(input("New Goal: "))
+        program.weekly_exercise_goal.goal_calories = new_goal
+        program.save_data()
+        program.weekly_summary()
+
+def reset_data():
+    if os.path.exists(DATA_FILE):
+        os.remove(DATA_FILE)
+
+if __name__ == "__main__":
+    main()
